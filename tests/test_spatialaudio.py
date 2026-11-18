@@ -3,12 +3,55 @@ import json
 import math
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import spatialaudio as mod  # noqa: E402
+import spatialaudio.core as core  # noqa: E402
 
 DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+
+def _rms(xs):
+    return math.sqrt(sum(x * x for x in xs) / len(xs))
+
+
+def _freq(samples, rate):
+    """上穿零检测（线性插值）估计信号频率。"""
+    crossings = []
+    prev = samples[0]
+    for i in range(1, len(samples)):
+        cur = samples[i]
+        if prev <= 0.0 < cur:
+            crossings.append(i - cur / (cur - prev))
+        prev = cur
+    if len(crossings) < 2:
+        return 0.0
+    return (len(crossings) - 1) * rate / (crossings[-1] - crossings[0])
+
+
+def _first_crossing(samples):
+    """首个上穿零位置（线性插值，样本单位）。"""
+    prev = samples[0]
+    for i in range(1, len(samples)):
+        cur = samples[i]
+        if prev <= 0.0 < cur:
+            return i - cur / (cur - prev)
+        prev = cur
+    return 0.0
+
+
+def _goertzel(samples, freq, rate):
+    """单频幅度（Goertzel），用于比较低通前后的谐波占比。"""
+    w = 2.0 * math.pi * freq / rate
+    c = 2.0 * math.cos(w)
+    s1 = s2 = 0.0
+    for x in samples:
+        s0 = x + c * s1 - s2
+        s2 = s1
+        s1 = s0
+    return 2.0 * math.sqrt(max(s1 * s1 + s2 * s2 - c * s1 * s2, 0.0)) / len(samples)
 
 
 def _scene():
